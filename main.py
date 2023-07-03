@@ -4,6 +4,7 @@ import cv2
 import tqdm
 import time
 import socket
+import posixpath
 
 from PySide6.QtWidgets import (QApplication, QWidget, 
                                QLabel, QPushButton, 
@@ -20,54 +21,74 @@ class MainWindow(QWidget):
         self.app = app
         self.setWindowTitle("Phantom File")
         self.setStyleSheet("QWidget {background: rgb(40, 40, 40);}")
-        self.setFixedSize(600, 350)
+        self.setMinimumSize(650, 400)
+        self.resize(650, 400)
 
-        self.initialize_settings()
         self.initialize_ui()
+        self.initialize_settings()
 
     def initialize_settings(self):
-        self.settings_path = "files\settings.jwl"
+        self.settings_path = "files/settings.jwl"
         if(os.path.isfile(self.settings_path)):
             with open(self.settings_path, 'r') as file:
                 data = file.read()
-
                 if(data == ""):
-                    home = os.path.expanduser("~")
-                    saves = os.path.join(home, "Downloads\Phantom Files")
-                    os.makedirs(saves, exist_ok=True)
-
-                    self.ip_addr = "127.0.0.1"
-                    self.port = 9999
-                    self.save_path = saves
+                    self.reset_settings()
                 else:
-                    addr, port, saves = data.split(",")
-                    os.makedirs(saves, exist_ok=True)
-
-                    self.ip_addr = addr
-                    self.port = int(port)
-                    self.save_path = saves
+                    self.refresh_settings()
         else:
-            home = os.path.expanduser("~")
-            saves = os.path.join(home, "Downloads\Phantom Files")
-            os.makedirs(saves, exist_ok=True)
+            self.reset_settings()
 
-            self.ip_addr = "127.0.0.1"
-            self.port = 9999
-            self.save_path = saves
+    def reset_settings(self):
+        home = os.path.expanduser("~")
+        home = home.replace("\\", '/')
+        saves = home +"/"+ "Downloads/Phantom Files"
+        os.makedirs(saves, exist_ok=True)
 
-            self.update_settings()
+        self.ip_addr = "127.0.0.1"
+        self.port = 9999
+        self.save_path = saves
 
-    def update_settings(self):
         data = f"{self.ip_addr},{self.port},{self.save_path}"
 
         with open(self.settings_path, "w") as file:
             file.write(data)
+        self.refresh_settings()
+
+    def update_settings(self):
+        ip_addr = self.ip_addr_textbox.toPlainText()
+        port = int(self.port_textbox.toPlainText())
+        save_path = self.saves_textbox.toPlainText()
+
+        data = f"{ip_addr},{port},{save_path}"
+
+        with open(self.settings_path, "w") as file:
+            file.write(data)
+        self.refresh_settings()
+        self.intro_page()
+
+    def refresh_settings(self):
+        with open(self.settings_path, 'r') as file:
+            data = file.read()
+            addr, port, saves = data.split(",")
+            os.makedirs(saves, exist_ok=True)
+
+            self.ip_addr = addr
+            self.port = int(port)
+            self.save_path = saves
+
+            self.ip_addr_textbox.setPlainText(self.ip_addr)
+            self.port_textbox.setPlainText(str(self.port))
+            self.saves_textbox.setPlainText(self.save_path)
 
     def initialize_ui(self):
         self.stacked_layout = QStackedLayout()
 
         intro_widget = self.intro_ui()
         self.stacked_layout.addWidget(intro_widget)
+
+        settings_widget = self.settings_ui()
+        self.stacked_layout.addWidget(settings_widget)
 
         send_widget = self.send_ui()
         self.stacked_layout.addWidget(send_widget)
@@ -83,8 +104,12 @@ class MainWindow(QWidget):
     def intro_page(self):
         self.stacked_layout.setCurrentIndex(0)
 
-    def send_page(self):
+    def settings_page(self):
+        self.refresh_settings()
         self.stacked_layout.setCurrentIndex(1)
+
+    def send_page(self):
+        self.stacked_layout.setCurrentIndex(2)
 
     def intro_ui(self):
         main_header = QLabel("Phantom File")
@@ -100,6 +125,9 @@ class MainWindow(QWidget):
                                     """
                                 )
         main_header.setAlignment(Qt.AlignCenter)
+
+        dummy_header = QLabel("")
+        dummy_header.setAlignment(Qt.AlignRight)
 
         client_header = QLabel("(Client)")
         client_header.setStyleSheet(
@@ -129,6 +157,38 @@ class MainWindow(QWidget):
                                 )
         server_header.setAlignment(Qt.AlignCenter)
         
+        settings_icon = QPixmap("files/gear.png")
+
+        settings_button = QPushButton()
+        settings_button.setIcon(settings_icon)
+        settings_button.clicked.connect(self.settings_page)
+        settings_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
         sender_button = QPushButton("SENDER")
         sender_button.setFixedSize(200, 80)
         sender_button.clicked.connect(self.send_page)
@@ -220,18 +280,329 @@ class MainWindow(QWidget):
         button_layout.addSpacing(20)
         button_layout.addLayout(recieve_button_layout)
 
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(settings_button)
+        header_layout.addWidget(main_header)
+        header_layout.addWidget(dummy_header)
+        header_layout.setAlignment(settings_button, Qt.AlignLeft)
+        header_layout.setAlignment(main_header, Qt.AlignCenter)
+        header_layout.setAlignment(dummy_header, Qt.AlignRight)
+
         intro_layout = QVBoxLayout()
-        intro_layout.setAlignment(Qt.AlignBottom)
-        intro_layout.addWidget(main_header)
+        intro_layout.addLayout(header_layout)
+        intro_layout.setAlignment(header_layout, Qt.AlignTop)
         intro_layout.addSpacing(20)
         intro_layout.addLayout(button_layout)
-        intro_layout.addSpacing(40)
+        intro_layout.setAlignment(button_layout, Qt.AlignCenter)
+        intro_layout.addSpacing(20)
         intro_layout.addWidget(note)
+        intro_layout.setAlignment(note, Qt.AlignBottom)
 
         intro_widget = QWidget()
         intro_widget.setLayout(intro_layout)
 
         return intro_widget
+
+    def settings_ui(self):
+        header = QLabel("Settings")
+        header.setAlignment(Qt.AlignCenter)
+        header.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #CCCCCC; 
+                                        font-size: 20px; 
+                                        font-weight: 600;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        saves_button = QPushButton("...")
+        saves_button.setFixedSize(45, 45)
+        saves_button.clicked.connect(self.saves_folder_dialog)
+        saves_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        cancel_button = QPushButton("CANCEL")
+        cancel_button.setFixedSize(130, 40)
+        cancel_button.clicked.connect(self.intro_page)
+        cancel_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+        
+        apply_button = QPushButton("ACCEPT")
+        apply_button.setFixedSize(130, 40)
+        apply_button.clicked.connect(self.update_settings)
+        apply_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        saves_caption = QLabel("Save Location")
+        saves_caption.setAlignment(Qt.AlignVCenter)
+        saves_caption.setFixedWidth(125)
+        saves_caption.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #A0A0A0; 
+                                        font-size: 14px; 
+                                        font-weight: 500;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        self.saves_textbox = QTextEdit()
+        self.saves_textbox.setAlignment(Qt.AlignCenter)
+        self.saves_textbox.setFixedHeight(45)
+        self.saves_textbox.setStyleSheet(
+                                    """
+                                    QTextEdit
+                                    {
+                                        background-color: #202020; 
+                                        color: #CCCCCC; 
+                                        border: 1px solid #555555;
+                                        border-radius: 5px;
+                                        padding: 6px 6px;
+                                    }
+                                    """
+                                )
+
+        ip_addr_caption = QLabel("Socket Address")
+        ip_addr_caption.setAlignment(Qt.AlignVCenter)
+        ip_addr_caption.setFixedWidth(120)
+        ip_addr_caption.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #A0A0A0; 
+                                        font-size: 14px; 
+                                        font-weight: 500;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        self.ip_addr_textbox = QTextEdit()
+        self.ip_addr_textbox.setAlignment(Qt.AlignCenter)
+        self.ip_addr_textbox.setFixedHeight(45)
+        self.ip_addr_textbox.setStyleSheet(
+                                    """
+                                    QTextEdit
+                                    {
+                                        background-color: #202020; 
+                                        color: #CCCCCC; 
+                                        border: 1px solid #555555;
+                                        border-radius: 5px;
+                                        padding: 6px 6px;
+                                    }
+                                    """
+                                )
+
+        port_caption = QLabel("Port Number")
+        port_caption.setAlignment(Qt.AlignVCenter)
+        port_caption.setFixedWidth(120)
+        port_caption.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #A0A0A0; 
+                                        font-size: 14px; 
+                                        font-weight: 500;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        self.port_textbox = QTextEdit()
+        self.port_textbox.setAlignment(Qt.AlignCenter)
+        self.port_textbox.setFixedHeight(45)
+        self.port_textbox.setStyleSheet(
+                                    """
+                                    QTextEdit
+                                    {
+                                        background-color: #202020; 
+                                        color: #CCCCCC; 
+                                        border: 1px solid #555555;
+                                        border-radius: 5px;
+                                        padding: 6px 6px;
+                                    }
+                                    """
+                                )
+
+        reset_caption = QLabel("Reset")
+        reset_caption.setAlignment(Qt.AlignVCenter)
+        reset_caption.setFixedWidth(53)
+        reset_caption.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #A0A0A0; 
+                                        font-size: 14px; 
+                                        font-weight: 500;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        reset_icon = QPixmap("files/reset.png")
+
+        reset_button = QPushButton()
+        reset_button.setIcon(reset_icon)
+        reset_button.setFixedSize(30, 30)
+        reset_button.clicked.connect(self.reset_settings)
+        reset_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+        
+        reset_layout = QHBoxLayout()
+        reset_layout.addWidget(reset_caption)
+        reset_layout.setAlignment(reset_caption, Qt.AlignRight)
+        reset_layout.addWidget(reset_button)
+        reset_layout.setAlignment(reset_button, Qt.AlignLeft)
+
+        saves_layout = QHBoxLayout()
+        saves_layout.addSpacing(5)
+        saves_layout.addWidget(saves_caption)
+        saves_layout.addWidget(self.saves_textbox)
+        saves_layout.addWidget(saves_button)
+        saves_layout.addSpacing(5)
+
+        ip_addr_layout = QHBoxLayout()
+        ip_addr_layout.addSpacing(5)
+        ip_addr_layout.addWidget(ip_addr_caption)
+        ip_addr_layout.addSpacing(5)
+        ip_addr_layout.addWidget(self.ip_addr_textbox)
+        ip_addr_layout.addSpacing(5)
+
+        port_layout = QHBoxLayout()
+        port_layout.addSpacing(5)
+        port_layout.addWidget(port_caption)
+        port_layout.addSpacing(5)
+        port_layout.addWidget(self.port_textbox)
+        port_layout.addSpacing(5)
+
+        central_layout = QVBoxLayout()
+        central_layout.addLayout(saves_layout)
+        central_layout.addLayout(ip_addr_layout)
+        central_layout.addLayout(port_layout)
+        central_layout.addLayout(reset_layout)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(cancel_button)
+        button_layout.setAlignment(cancel_button, Qt.AlignRight)
+        button_layout.addSpacing(20)
+        button_layout.addWidget(apply_button)
+        button_layout.setAlignment(apply_button, Qt.AlignLeft)
+
+        settings_layout = QVBoxLayout()
+        settings_layout.setAlignment(Qt.AlignCenter)
+        settings_layout.addWidget(header)
+        settings_layout.setAlignment(header, Qt.AlignTop)
+        settings_layout.addSpacing(10)
+        settings_layout.addLayout(central_layout)
+        settings_layout.addSpacing(10)
+        settings_layout.addLayout(button_layout)
+        settings_layout.setAlignment(button_layout, Qt.AlignBottom)
+
+        settings_widget = QWidget()
+        settings_widget.setLayout(settings_layout)
+
+        return settings_widget
 
     def send_ui(self):
         header = QLabel("Select file")
@@ -430,6 +801,13 @@ class MainWindow(QWidget):
 
         return send_widget
 
+    def saves_folder_dialog(self):
+        folder_dialog = QFileDialog()
+        folder_path = folder_dialog.getExistingDirectory(None, "Save Location", "/path/to/default/folder")
+
+        if folder_path:
+            self.saves_textbox.setPlainText(folder_path)
+
     def open_file_dialog(self):
         file_dialog = QFileDialog()
         file_path, _ = file_dialog.getOpenFileName(
@@ -502,7 +880,7 @@ class MainWindow(QWidget):
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         center_frame = total_frames // 4
         cap.set(cv2.CAP_PROP_POS_FRAMES, center_frame)
-        ret, frame = cap.read()
+        _, frame = cap.read()
         cap.release()
         cv2.destroyAllWindows()
 
