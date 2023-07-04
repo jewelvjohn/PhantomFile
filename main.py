@@ -4,28 +4,43 @@ import cv2
 import tqdm
 import time
 import socket
-import posixpath
 
-from PySide6.QtWidgets import (QApplication, QWidget, 
-                               QLabel, QPushButton, 
-                               QVBoxLayout, QHBoxLayout, 
-                               QTextEdit, QStackedLayout,
-                               QFileDialog, QFileDialog, 
-                               QFileIconProvider, QSizePolicy)
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage
-from PySide6.QtCore import Qt, QFileInfo
+from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, 
+                               QVBoxLayout, QHBoxLayout, QTextEdit, QStackedLayout,
+                               QFileDialog, QFileDialog, QFileIconProvider, 
+                               QSizePolicy)
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QColor, QMouseEvent
+from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint
 
 class MainWindow(QWidget):
+    sending_file_path = str()
+
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self.setWindowTitle("Phantom File")
-        self.setStyleSheet("QWidget {background: rgb(40, 40, 40);}")
-        self.setMinimumSize(650, 400)
-        self.resize(650, 400)
+        self.setFixedSize(650, 400)
+        self.setWindowFlags(Qt.FramelessWindowHint)
+
+        self.draggable_area = self.rect()
+        self.offset = QPoint()
+        self.dragging = False
+        self.draggable = True
 
         self.initialize_ui()
         self.initialize_settings()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton and self.draggable and self.draggable_area.contains(event.position().toPoint()):
+            self.dragging = True
+            self.offset = event.position().toPoint()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self.dragging:
+            self.move(self.mapToParent(event.position().toPoint() - self.offset))
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton and self.dragging:
+            self.dragging = False
 
     def initialize_settings(self):
         self.settings_path = "files/settings.jwl"
@@ -56,7 +71,7 @@ class MainWindow(QWidget):
         self.refresh_settings()
 
     def update_settings(self):
-        ip_addr = self.ip_addr_textbox.toPlainText()
+        ip_addr = self.host_textbox.toPlainText()
         port = int(self.port_textbox.toPlainText())
         save_path = self.saves_textbox.toPlainText()
 
@@ -77,11 +92,23 @@ class MainWindow(QWidget):
             self.port = int(port)
             self.save_path = saves
 
-            self.ip_addr_textbox.setPlainText(self.ip_addr)
+            self.host_textbox.setPlainText(self.ip_addr)
             self.port_textbox.setPlainText(str(self.port))
             self.saves_textbox.setPlainText(self.save_path)
 
     def initialize_ui(self):
+        self.setStyleSheet(
+                                """
+                                QWidget 
+                                {
+                                    background-color: #282828;
+                                }
+                                """
+                            )
+        
+        titlebar = self.titlebar_ui()
+        self.draggable_area = titlebar.rect()
+
         self.stacked_layout = QStackedLayout()
 
         intro_widget = self.intro_ui()
@@ -90,14 +117,19 @@ class MainWindow(QWidget):
         settings_widget = self.settings_ui()
         self.stacked_layout.addWidget(settings_widget)
 
-        send_widget = self.send_ui()
+        send_widget = self.sender_ui()
         self.stacked_layout.addWidget(send_widget)
+
+        sending_widget = self.sending_ui()
+        self.stacked_layout.addWidget(sending_widget)
 
         # recieve_widget = self.send_ui()
         # self.stacked_layout.addWidget(recieve_widget)
 
         self.main_layout = QVBoxLayout()
+        self.main_layout.addWidget(titlebar)
         self.main_layout.addLayout(self.stacked_layout)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.setLayout(self.main_layout)
 
@@ -108,24 +140,136 @@ class MainWindow(QWidget):
         self.refresh_settings()
         self.stacked_layout.setCurrentIndex(1)
 
-    def send_page(self):
+    def sender_page(self):
         self.stacked_layout.setCurrentIndex(2)
 
-    def intro_ui(self):
-        main_header = QLabel("Phantom File")
-        main_header.setStyleSheet(
+    def sending_page(self):
+        self.stacked_layout.setCurrentIndex(3)
+
+    def titlebar_ui(self):
+        app_icon = QPixmap("files/icon.png")
+        app_icon = app_icon.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+
+        icon_label = QLabel()
+        icon_label.setPixmap(app_icon)
+        icon_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        title_label = QLabel("Phantom File")
+        title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        title_label.setStyleSheet(
                                     """
                                     QLabel
                                     {
                                         color: #CCCCCC; 
-                                        font-size: 20px; 
-                                        font-weight: 600;
-                                        padding: 8px 8px;
+                                        font-size: 16px; 
+                                        font-weight: 550;
                                     }
                                     """
                                 )
-        main_header.setAlignment(Qt.AlignCenter)
 
+        close_icon = QPixmap("files/close.png")
+
+        close_button = QPushButton()
+        close_button.setIcon(close_icon)
+        close_button.setFixedSize(20, 20)
+        close_button.clicked.connect(self.close)
+        close_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #AA4040;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        minimize_icon = QPixmap("files/minimize.png")
+
+        minimize_button = QPushButton()
+        minimize_button.setIcon(minimize_icon)
+        minimize_button.setFixedSize(20, 20)
+        minimize_button.clicked.connect(self.showMinimized)
+        minimize_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        title_layout = QHBoxLayout()
+        title_layout.addWidget(icon_label)
+        title_layout.setAlignment(icon_label, Qt.AlignRight | Qt.AlignVCenter)
+        title_layout.addSpacing(5)
+        title_layout.addWidget(title_label)
+        title_layout.setAlignment(title_label, Qt.AlignLeft | Qt.AlignVCenter)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(minimize_button)
+        button_layout.setAlignment(minimize_button, Qt.AlignRight | Qt.AlignVCenter)
+        button_layout.addSpacing(5)
+        button_layout.addWidget(close_button)
+        button_layout.setAlignment(close_button, Qt.AlignLeft | Qt.AlignVCenter)
+
+        titlebar_layout = QHBoxLayout()
+        titlebar_layout.addSpacing(5)
+        titlebar_layout.addLayout(title_layout)
+        titlebar_layout.setAlignment(title_layout, Qt.AlignLeft | Qt.AlignVCenter)
+        titlebar_layout.addLayout(button_layout)
+        titlebar_layout.setAlignment(button_layout, Qt.AlignRight | Qt.AlignVCenter)
+        titlebar_layout.addSpacing(5)
+
+        titlebar_widget = QWidget()
+        titlebar_widget.setFixedHeight(40)
+        titlebar_widget.setLayout(titlebar_layout)
+        titlebar_widget.setStyleSheet(
+                                        """
+                                            QWidget {
+                                                border-radius: 0px;
+                                                background-color: #151515;
+                                            }
+                                        """
+                                    )
+
+        return titlebar_widget
+
+    def intro_ui(self):
         dummy_header = QLabel("")
         dummy_header.setAlignment(Qt.AlignRight)
 
@@ -191,7 +335,7 @@ class MainWindow(QWidget):
 
         sender_button = QPushButton("SENDER")
         sender_button.setFixedSize(200, 80)
-        sender_button.clicked.connect(self.send_page)
+        sender_button.clicked.connect(self.sender_page)
         sender_button.setStyleSheet(
                                     """
                                     QPushButton {
@@ -282,10 +426,8 @@ class MainWindow(QWidget):
 
         header_layout = QHBoxLayout()
         header_layout.addWidget(settings_button)
-        header_layout.addWidget(main_header)
         header_layout.addWidget(dummy_header)
         header_layout.setAlignment(settings_button, Qt.AlignLeft)
-        header_layout.setAlignment(main_header, Qt.AlignCenter)
         header_layout.setAlignment(dummy_header, Qt.AlignRight)
 
         intro_layout = QVBoxLayout()
@@ -439,10 +581,10 @@ class MainWindow(QWidget):
                                     """
                                 )
 
-        ip_addr_caption = QLabel("Socket Address")
-        ip_addr_caption.setAlignment(Qt.AlignVCenter)
-        ip_addr_caption.setFixedWidth(120)
-        ip_addr_caption.setStyleSheet(
+        host_caption = QLabel("Host Address")
+        host_caption.setAlignment(Qt.AlignVCenter)
+        host_caption.setFixedWidth(120)
+        host_caption.setStyleSheet(
                                     """
                                     QLabel
                                     {
@@ -454,10 +596,10 @@ class MainWindow(QWidget):
                                     """
                                 )
 
-        self.ip_addr_textbox = QTextEdit()
-        self.ip_addr_textbox.setAlignment(Qt.AlignCenter)
-        self.ip_addr_textbox.setFixedHeight(45)
-        self.ip_addr_textbox.setStyleSheet(
+        self.host_textbox = QTextEdit()
+        self.host_textbox.setAlignment(Qt.AlignCenter)
+        self.host_textbox.setFixedHeight(45)
+        self.host_textbox.setStyleSheet(
                                     """
                                     QTextEdit
                                     {
@@ -562,12 +704,12 @@ class MainWindow(QWidget):
         saves_layout.addWidget(saves_button)
         saves_layout.addSpacing(5)
 
-        ip_addr_layout = QHBoxLayout()
-        ip_addr_layout.addSpacing(5)
-        ip_addr_layout.addWidget(ip_addr_caption)
-        ip_addr_layout.addSpacing(5)
-        ip_addr_layout.addWidget(self.ip_addr_textbox)
-        ip_addr_layout.addSpacing(5)
+        host_layout = QHBoxLayout()
+        host_layout.addSpacing(5)
+        host_layout.addWidget(host_caption)
+        host_layout.addSpacing(5)
+        host_layout.addWidget(self.host_textbox)
+        host_layout.addSpacing(5)
 
         port_layout = QHBoxLayout()
         port_layout.addSpacing(5)
@@ -578,7 +720,7 @@ class MainWindow(QWidget):
 
         central_layout = QVBoxLayout()
         central_layout.addLayout(saves_layout)
-        central_layout.addLayout(ip_addr_layout)
+        central_layout.addLayout(host_layout)
         central_layout.addLayout(port_layout)
         central_layout.addLayout(reset_layout)
 
@@ -598,13 +740,77 @@ class MainWindow(QWidget):
         settings_layout.addSpacing(10)
         settings_layout.addLayout(button_layout)
         settings_layout.setAlignment(button_layout, Qt.AlignBottom)
+        settings_layout.addSpacing(10)
 
         settings_widget = QWidget()
         settings_widget.setLayout(settings_layout)
 
         return settings_widget
 
-    def send_ui(self):
+    def sending_ui(self):
+        self.sending_header = QLabel("Searching for receivers...")
+        self.sending_header.setAlignment(Qt.AlignCenter)
+        self.sending_header.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #CCCCCC; 
+                                        font-size: 20px; 
+                                        font-weight: 600;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        cancel_button = QPushButton("CANCEL")
+        cancel_button.setFixedSize(130, 40)
+        cancel_button.clicked.connect(self.sender_page)
+        cancel_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #AA8080;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        self.loading_label = QLabel("loading icon")
+
+        sending_layout = QVBoxLayout()
+        sending_layout.addWidget(self.sending_header)
+        sending_layout.setAlignment(self.sending_header, Qt.AlignTop | Qt.AlignHCenter)
+        sending_layout.addSpacing(10)
+        sending_layout.addWidget(self.loading_label)
+        sending_layout.setAlignment(self.loading_label, Qt.AlignCenter)
+        sending_layout.addSpacing(10)
+        sending_layout.addWidget(cancel_button)
+        sending_layout.setAlignment(cancel_button, Qt.AlignBottom | Qt.AlignHCenter)
+        sending_layout.addSpacing(10)
+
+        sending_widget = QWidget()
+        sending_widget.setLayout(sending_layout)
+
+        return sending_widget
+
+    def sender_ui(self):
         header = QLabel("Select file")
         header.setAlignment(Qt.AlignCenter)
         header.setStyleSheet(
@@ -681,7 +887,7 @@ class MainWindow(QWidget):
         
         send_button = QPushButton("SEND")
         send_button.setFixedSize(130, 40)
-        # send_button.clicked.connect(self.disconnect)
+        send_button.clicked.connect(self.send)
         send_button.setStyleSheet(
                                     """
                                     QPushButton {
@@ -795,6 +1001,7 @@ class MainWindow(QWidget):
         send_layout.addWidget(file_info_widget)
         send_layout.addSpacing(20)
         send_layout.addLayout(button_layout)
+        send_layout.addSpacing(10)
 
         send_widget = QWidget()
         send_widget.setLayout(send_layout)
@@ -810,15 +1017,15 @@ class MainWindow(QWidget):
 
     def open_file_dialog(self):
         file_dialog = QFileDialog()
-        file_path, _ = file_dialog.getOpenFileName(
+        self.sending_file_path, _ = file_dialog.getOpenFileName(
             self, "Open File", "", "All Files (*)"
         )
-        if file_path:
-            self.file_path_label.setText(f"File Path: {file_path}")
-            file_size = os.path.getsize(file_path)
+        if self.sending_file_path:
+            self.file_path_label.setText(f"File Path: {self.sending_file_path}")
+            file_size = os.path.getsize(self.sending_file_path)
             formatted_size = self.format_file_size(file_size)
             self.file_size_label.setText(f"{formatted_size}")
-            self.set_file_icon(file_path)
+            self.set_file_icon(self.sending_file_path)
 
             self.file_path_label.adjustSize()
             self.file_size_label.adjustSize()
@@ -908,36 +1115,16 @@ class MainWindow(QWidget):
         self.file_icon_label.setPixmap(icon.pixmap(48, 48))
 
     # Sender
-    def send(self, host: str, port: int, file_path: str):
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        file = open(file_path, "rb")
+    def send(self):
+        if os.path.isfile(self.sending_file_path):
+            self.sending_page()
 
-        while True:
-            try:
-                client.connect((host, port))
-                print("Connected to server")
-                break
-            except ConnectionRefusedError:
-                print("Connection refused. Retrying in 2 seconds...")
-                time.sleep(2)
-
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-
-
-        (tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, tm_wday, tmyday, tm_isdst) = time.localtime()
-        name_mark = "PF ["+ str(tm_mday) +"-"+ str(tm_mon) +"-"+ str(tm_year) +"]" + "["+ str(tm_hour) +"-"+ str(tm_min) +"-"+ str(tm_sec) +"] "
-
-        reciever_file = name_mark + file_name
-
-        client.send(reciever_file.encode())
-        client.send(str(file_size).encode())
-
-        data = file.read()
-        client.sendall(data)
-
-        client.close()
-        file.close()
+            # self.sender_thread = SenderThread()
+            # self.sender_thread.connectionEstablished.connect()
+            # self.sender_thread.progressChanged.connect()
+            # self.sender_thread.fileRecieved.connect()
+            # self.sender_thread.fileSend.connect()
+            # self.sender_thread.start()
 
     # Reciever
     def recieve(self, host: str, port: int, file_dir: str):
@@ -975,6 +1162,52 @@ class MainWindow(QWidget):
 
         client.close()
         server.close()
+
+class SenderThread(QThread):
+    connectionEstablished = Signal()
+    progressChanged = Signal(int)
+    fileRecieved = Signal()
+    fileSend = Signal()
+
+    def __init__(self, id_addr: str, port: int, file_path: str):
+        self.host = id_addr
+        self.port = port
+        self.file_path = file_path
+
+    def run(self):
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        file = open(self.file_path, "rb")
+
+        while True:
+            try:
+                client.connect((self.host, self.port))
+                self.connectionEstablished.emit()
+                break
+            except ConnectionRefusedError:
+                print("Connection refused. Retrying in 2 seconds...")
+                time.sleep(2)
+
+        file_name = os.path.basename(self.file_path)
+        file_size = os.path.getsize(self.file_path)
+
+
+        (tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, _, _, _) = time.localtime()
+        name_mark = "PF ["+ str(tm_mday) +"-"+ str(tm_mon) +"-"+ str(tm_year) +"]" + "["+ str(tm_hour) +"-"+ str(tm_min) +"-"+ str(tm_sec) +"] "
+
+        reciever_file = name_mark + file_name
+
+        client.send(reciever_file.encode())
+        client.send(str(file_size).encode())
+
+        data = file.read()
+        client.sendall(data)
+        self.fileSend.emit()
+
+        client.close()
+        file.close()
+
+        # self.progressChanged.emit(i)
+        self.fileRecieved.emit() 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
