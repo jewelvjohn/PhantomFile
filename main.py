@@ -8,11 +8,317 @@ import socket
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton, 
                                QVBoxLayout, QHBoxLayout, QTextEdit, QStackedLayout,
                                QFileDialog, QFileDialog, QFileIconProvider, 
-                               QSizePolicy)
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QColor, QMouseEvent
-from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint
+                               QSizePolicy, QGraphicsView, QGraphicsScene, 
+                               QGraphicsPixmapItem, QProgressBar)
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QColor, QMouseEvent, QTransform
+from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint, QTimer
+
+class RotatingImage(QGraphicsView):
+    steps = 1
+    interval = 10
+
+    def __init__(self, image: str, w: int, h: int, steps=None, interval=None):
+        super().__init__()
+
+        if steps is not None:
+            self.steps = steps
+
+        if interval is not None:
+            self.interval = interval
+
+        self.scene = QGraphicsScene()
+        self.setScene(self.scene)
+
+        self.pixmap_item = QGraphicsPixmapItem()
+        self.pixmap_item.setTransformationMode(Qt.SmoothTransformation)
+        self.pixmap_item.setShapeMode(QGraphicsPixmapItem.BoundingRectShape)
+        self.scene.addItem(self.pixmap_item)
+
+        pixmap = QPixmap(image).scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+        self.pixmap_item.setPixmap(pixmap)
+
+        self.start_animation()
+
+    def start_animation(self):
+        self.rotation_angle = 0
+        self.rotation_timer = QTimer()
+        self.rotation_timer.timeout.connect(self.update_rotation)
+        self.rotation_timer.start(self.interval)  # Adjust the interval (in milliseconds) to control the rotation speed
+
+    def update_rotation(self):
+        self.rotation_angle += self.steps
+        pixmap_width = self.pixmap_item.pixmap().width()
+        pixmap_height = self.pixmap_item.pixmap().height()
+        transform = QTransform().translate(pixmap_width / 2, pixmap_height / 2).rotate(self.rotation_angle).translate(-pixmap_width / 2, -pixmap_height / 2)
+        self.pixmap_item.setTransform(transform)
+
+    def stop_animation(self):
+        self.rotation_timer.stop()
+
+class Progressbar_Widget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.current_data = QLabel("0 B")
+        self.maximum_data = QLabel("0 B")
+        self.percentage = QLabel("0 %")
+        self.progressbar = QProgressBar()
+        self.file_size = 0
+
+        self.percentage.setAlignment(Qt.AlignLeft)
+        self.percentage.setStyleSheet(
+            """
+                QLabel
+                {
+                    color: #CCCCCC;
+                    font-size: 16px;
+                    font-weight: 650;
+                }
+            """
+        )
+
+        self.current_data.setAlignment(Qt.AlignRight)
+        self.current_data.setStyleSheet(
+            """
+                QLabel
+                {
+                    color: #CCCCCC;
+                    font-size: 16px;
+                    font-weight: 650;
+                }
+            """
+        )
+
+        self.maximum_data.setAlignment(Qt.AlignLeft)
+        self.maximum_data.setStyleSheet(
+            """
+                QLabel
+                {
+                    color: #CCCCCC;
+                    font-size: 16px;
+                    font-weight: 650;
+                }
+            """
+        )
+
+        self.progressbar.setFixedHeight(20)
+        self.progressbar.setRange(0, 100)
+        self.progressbar.setValue(0)
+
+        slash = QLabel("/")
+        slash.setAlignment(Qt.AlignVCenter)
+        slash.setStyleSheet(
+            """
+                QLabel
+                {
+                    color: #CCCCCC;
+                    font-size: 16px;
+                    font-weight: 650;
+                }
+            """
+        )
+
+        data_layout = QHBoxLayout()
+        data_layout.addWidget(self.current_data)
+        data_layout.setAlignment(self.current_data, Qt.AlignRight | Qt.AlignVCenter)
+        data_layout.addWidget(slash)
+        data_layout.setAlignment(slash, Qt.AlignVCenter)
+        data_layout.addWidget(self.maximum_data)
+        data_layout.setAlignment(self.maximum_data, Qt.AlignLeft | Qt.AlignVCenter)
+
+        text_layout = QHBoxLayout()
+        text_layout.addSpacing(5)
+        text_layout.addWidget(self.percentage)
+        text_layout.setAlignment(self.percentage, Qt.AlignBottom | Qt.AlignLeft)
+        text_layout.addLayout(data_layout)
+        text_layout.setAlignment(data_layout, Qt.AlignBottom | Qt.AlignRight)
+        text_layout.addSpacing(5)
+
+        progressbar_layout = QVBoxLayout()
+        progressbar_layout.setAlignment(Qt.AlignCenter)
+        progressbar_layout.addLayout(text_layout)
+        progressbar_layout.addWidget(self.progressbar)
+
+        self.setLayout(progressbar_layout)
+
+    def set_red_theme(self):
+        self.progressbar.setStyleSheet(
+            """
+                QProgressBar 
+                {
+                    color: transparent;
+                    background-color: #151515;
+                    border: 1px solid #444444;
+                    border-radius: 10px;
+                    padding: 5px 5px;
+                }
+                
+                QProgressBar::chunk 
+                {
+                    background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #AA4040, stop:1 #4040AA);
+                    border-radius: 4px;
+                }
+            """
+        )
+
+    def set_green_theme(self):
+        self.progressbar.setStyleSheet(
+            """
+                QProgressBar 
+                {
+                    color: transparent;
+                    background-color: #151515;
+                    border: 1px solid #444444;
+                    border-radius: 10px;
+                    padding: 5px 5px;
+                }
+                
+                QProgressBar::chunk 
+                {
+                    background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 #7010AA, stop:1 #40AA40);
+                    border-radius: 4px;
+                }
+            """
+        )
+
+    def set_progress(self, value):
+        if value <= self.progressbar.maximum():    
+            self.progressbar.setValue(value)
+            self.percentage.setText(str(value) + " %")
+
+    def set_maximum_data(self, value):
+        self.file_size = value
+        file_size = self.format_file_size(value)
+        self.maximum_data.setText(file_size)
+
+    def set_current_data(self, value):
+        file_size = self.format_file_size(value)
+        self.current_data.setText(file_size)
+
+        if self.file_size:
+            percentage = (value / self.file_size) * 100
+            percentage = round(percentage, 2)
+            self.set_progress(percentage)
+
+    @staticmethod
+    def format_file_size(size):
+        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        index = 0
+        while size >= 1024 and index < len(units) - 1:
+            size /= 1024
+            index += 1
+        return f"{size:.2f} {units[index]}"
+
+class SenderThread(QThread):
+    connectionEstablished = Signal()
+    progressChanged = Signal(int)
+    fileRecieved = Signal()
+    fileSend = Signal()
+
+    def __init__(self, host: str, port: int, file_path: str):
+        super().__init__()
+
+        self.host = host
+        self.port = port
+        self.file_path = file_path
+        self.stop_request = False
+
+    def stop(self):
+        self.stop_request = True
+
+    def run(self):
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        file = open(self.file_path, "rb")
+
+        while True:
+            if self.stop_request:
+                return
+            try:
+                client.connect((self.host, self.port))
+                self.connectionEstablished.emit()
+                break
+            except ConnectionRefusedError:
+                print("Connection refused. Retrying in 2 seconds...")
+                time.sleep(2)
+
+        file_name = os.path.basename(self.file_path)
+        file_size = os.path.getsize(self.file_path)
+
+
+        (tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, _, _, _) = time.localtime()
+        name_mark = "PF ["+ str(tm_mday) +"-"+ str(tm_mon) +"-"+ str(tm_year) +"]" + "["+ str(tm_hour) +"-"+ str(tm_min) +"-"+ str(tm_sec) +"] "
+
+        reciever_file = name_mark + file_name
+
+        client.send(reciever_file.encode())
+        client.send(str(file_size).encode())
+
+        data = file.read()
+        client.sendall(data)
+        self.fileSend.emit()
+
+        client.close()
+        file.close()
+
+        # self.progressChanged.emit(i)
+        self.fileRecieved.emit() 
+
+class ReceiverThread(QThread):
+    connectionEstablished = Signal()
+    progressChanged = Signal(int)
+    fileRecieved = Signal()
+    fileSize = Signal(int)
+
+    def __init__(self, host: str, port: int, file_path: str):
+        super().__init__()
+        self.host = host
+        self.port = port
+        self.file_path = file_path
+
+    def run(self):
+        os.makedirs(self.file_path, exist_ok=True)
+
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind((self.host, self.port))
+        server.listen()
+
+        print("Server listening on {}:{}".format(self.host, self.port))
+        client, client_addr = server.accept()
+
+        print("Client connected: ", client_addr)
+        self.connectionEstablished.emit()
+
+        file_name = client.recv(1024).decode()
+        file_size = int(client.recv(1024).decode())
+        self.file_path = self.file_path + "/" + file_name
+
+        self.fileSize.emit(file_size)
+
+        done = False
+
+        progress = tqdm.tqdm(unit="B", unit_scale=True, unit_divisor=1000, total=int(file_size))
+        progress_percentage = 0
+
+        while not done:
+            data = client.recv(1024)
+            if progress_percentage >= 100:
+                print("Successfully recieved")
+
+                done = True
+            else:
+                with open(self.file_path, 'ab') as file:
+                    file.write(data)
+            progress.update(1024)
+            progress_percentage = (progress.n / progress.total) * 100
+            self.progressChanged.emit(progress.pos)
+
+        client.close()
+        server.close()
+
+        self.fileRecieved.emit()
 
 class MainWindow(QWidget):
+    save_path = str()
     sending_file_path = str()
 
     def __init__(self, app):
@@ -60,11 +366,11 @@ class MainWindow(QWidget):
         saves = home +"/"+ "Downloads/Phantom Files"
         os.makedirs(saves, exist_ok=True)
 
-        self.ip_addr = "127.0.0.1"
+        self.host = "127.0.0.1"
         self.port = 9999
         self.save_path = saves
 
-        data = f"{self.ip_addr},{self.port},{self.save_path}"
+        data = f"{self.host},{self.port},{self.save_path}"
 
         with open(self.settings_path, "w") as file:
             file.write(data)
@@ -80,7 +386,7 @@ class MainWindow(QWidget):
         with open(self.settings_path, "w") as file:
             file.write(data)
         self.refresh_settings()
-        self.intro_page()
+        self.main_page()
 
     def refresh_settings(self):
         with open(self.settings_path, 'r') as file:
@@ -88,11 +394,11 @@ class MainWindow(QWidget):
             addr, port, saves = data.split(",")
             os.makedirs(saves, exist_ok=True)
 
-            self.ip_addr = addr
+            self.host = addr
             self.port = int(port)
             self.save_path = saves
 
-            self.host_textbox.setPlainText(self.ip_addr)
+            self.host_textbox.setPlainText(self.host)
             self.port_textbox.setPlainText(str(self.port))
             self.saves_textbox.setPlainText(self.save_path)
 
@@ -111,7 +417,7 @@ class MainWindow(QWidget):
 
         self.stacked_layout = QStackedLayout()
 
-        intro_widget = self.intro_ui()
+        intro_widget = self.main_ui()
         self.stacked_layout.addWidget(intro_widget)
 
         settings_widget = self.settings_ui()
@@ -121,7 +427,11 @@ class MainWindow(QWidget):
         self.stacked_layout.addWidget(send_widget)
 
         sending_widget = self.sending_ui()
+        self.sender_connecting_state()
         self.stacked_layout.addWidget(sending_widget)
+
+        receiver_widget = self.receiver_ui()
+        self.stacked_layout.addWidget(receiver_widget)
 
         # recieve_widget = self.send_ui()
         # self.stacked_layout.addWidget(recieve_widget)
@@ -133,7 +443,7 @@ class MainWindow(QWidget):
 
         self.setLayout(self.main_layout)
 
-    def intro_page(self):
+    def main_page(self):
         self.stacked_layout.setCurrentIndex(0)
 
     def settings_page(self):
@@ -144,7 +454,12 @@ class MainWindow(QWidget):
         self.stacked_layout.setCurrentIndex(2)
 
     def sending_page(self):
+        self.sender_connecting_state()
         self.stacked_layout.setCurrentIndex(3)
+
+    def receiver_page(self):
+        self.receiver_connecting_state()
+        self.stacked_layout.setCurrentIndex(4)
 
     def titlebar_ui(self):
         app_icon = QPixmap("files/icon.png")
@@ -269,7 +584,7 @@ class MainWindow(QWidget):
 
         return titlebar_widget
 
-    def intro_ui(self):
+    def main_ui(self):
         dummy_header = QLabel("")
         dummy_header.setAlignment(Qt.AlignRight)
 
@@ -363,10 +678,10 @@ class MainWindow(QWidget):
                                     """
                                 )
         
-        reciever_button = QPushButton("RECIEVER")
-        reciever_button.setFixedSize(200, 80)
-        # recieve_button.clicked.connect(self.recieve_ui)
-        reciever_button.setStyleSheet(
+        receiver_button = QPushButton("RECEIVER")
+        receiver_button.setFixedSize(200, 80)
+        receiver_button.clicked.connect(self.receive)
+        receiver_button.setStyleSheet(
                                     """
                                     QPushButton {
                                         font-size: 15px;
@@ -413,16 +728,16 @@ class MainWindow(QWidget):
         send_button_layout.addWidget(sender_button)
         send_button_layout.addWidget(client_header)
 
-        recieve_button_layout = QVBoxLayout()
-        recieve_button_layout.setAlignment(Qt.AlignCenter)
-        recieve_button_layout.addWidget(reciever_button)
-        recieve_button_layout.addWidget(server_header)
+        receive_button_layout = QVBoxLayout()
+        receive_button_layout.setAlignment(Qt.AlignCenter)
+        receive_button_layout.addWidget(receiver_button)
+        receive_button_layout.addWidget(server_header)
 
         button_layout = QHBoxLayout()
         button_layout.setAlignment(Qt.AlignCenter)
         button_layout.addLayout(send_button_layout)
         button_layout.addSpacing(20)
-        button_layout.addLayout(recieve_button_layout)
+        button_layout.addLayout(receive_button_layout)
 
         header_layout = QHBoxLayout()
         header_layout.addWidget(settings_button)
@@ -430,20 +745,20 @@ class MainWindow(QWidget):
         header_layout.setAlignment(settings_button, Qt.AlignLeft)
         header_layout.setAlignment(dummy_header, Qt.AlignRight)
 
-        intro_layout = QVBoxLayout()
-        intro_layout.addLayout(header_layout)
-        intro_layout.setAlignment(header_layout, Qt.AlignTop)
-        intro_layout.addSpacing(20)
-        intro_layout.addLayout(button_layout)
-        intro_layout.setAlignment(button_layout, Qt.AlignCenter)
-        intro_layout.addSpacing(20)
-        intro_layout.addWidget(note)
-        intro_layout.setAlignment(note, Qt.AlignBottom)
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(header_layout)
+        main_layout.setAlignment(header_layout, Qt.AlignTop)
+        main_layout.addSpacing(20)
+        main_layout.addLayout(button_layout)
+        main_layout.setAlignment(button_layout, Qt.AlignCenter)
+        main_layout.addSpacing(20)
+        main_layout.addWidget(note)
+        main_layout.setAlignment(note, Qt.AlignBottom)
 
-        intro_widget = QWidget()
-        intro_widget.setLayout(intro_layout)
+        main_widget = QWidget()
+        main_widget.setLayout(main_layout)
 
-        return intro_widget
+        return main_widget
 
     def settings_ui(self):
         header = QLabel("Settings")
@@ -492,7 +807,7 @@ class MainWindow(QWidget):
 
         cancel_button = QPushButton("CANCEL")
         cancel_button.setFixedSize(130, 40)
-        cancel_button.clicked.connect(self.intro_page)
+        cancel_button.clicked.connect(self.main_page)
         cancel_button.setStyleSheet(
                                     """
                                     QPushButton {
@@ -748,7 +1063,7 @@ class MainWindow(QWidget):
         return settings_widget
 
     def sending_ui(self):
-        self.sending_header = QLabel("Searching for receivers...")
+        self.sending_header = QLabel("Trying to Connecting")
         self.sending_header.setAlignment(Qt.AlignCenter)
         self.sending_header.setStyleSheet(
                                     """
@@ -764,7 +1079,7 @@ class MainWindow(QWidget):
 
         cancel_button = QPushButton("CANCEL")
         cancel_button.setFixedSize(130, 40)
-        cancel_button.clicked.connect(self.sender_page)
+        cancel_button.clicked.connect(self.close_sender_thread)
         cancel_button.setStyleSheet(
                                     """
                                     QPushButton {
@@ -792,14 +1107,29 @@ class MainWindow(QWidget):
                                     """
                                 )
 
-        self.loading_label = QLabel("loading icon")
+        self.senter_loading_icon = RotatingImage("files/loading.png", 64, 64, -1, 2)
+        self.senter_loading_icon.setFixedSize(96, 96)
+        self.senter_loading_icon.setStyleSheet(
+            """
+                QGraphicsView
+                {
+                    border: 0px;
+                }
+            """
+        )
+
+        self.sender_progressbar = Progressbar_Widget()
+        self.sender_progressbar.set_red_theme()
+        self.sender_progressbar.setFixedWidth(500)
 
         sending_layout = QVBoxLayout()
         sending_layout.addWidget(self.sending_header)
         sending_layout.setAlignment(self.sending_header, Qt.AlignTop | Qt.AlignHCenter)
         sending_layout.addSpacing(10)
-        sending_layout.addWidget(self.loading_label)
-        sending_layout.setAlignment(self.loading_label, Qt.AlignCenter)
+        sending_layout.addWidget(self.senter_loading_icon)
+        sending_layout.setAlignment(self.senter_loading_icon, Qt.AlignCenter)
+        sending_layout.addWidget(self.sender_progressbar)
+        sending_layout.setAlignment(self.sender_progressbar, Qt.AlignCenter)
         sending_layout.addSpacing(10)
         sending_layout.addWidget(cancel_button)
         sending_layout.setAlignment(cancel_button, Qt.AlignBottom | Qt.AlignHCenter)
@@ -809,6 +1139,84 @@ class MainWindow(QWidget):
         sending_widget.setLayout(sending_layout)
 
         return sending_widget
+
+    def receiver_ui(self):
+        self.receiver_header = QLabel("Trying to Connecting")
+        self.receiver_header.setAlignment(Qt.AlignCenter)
+        self.receiver_header.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #CCCCCC; 
+                                        font-size: 20px; 
+                                        font-weight: 600;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+        cancel_button = QPushButton("CANCEL")
+        cancel_button.setFixedSize(130, 40)
+        cancel_button.clicked.connect(self.main_page)
+        cancel_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #AA8080;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        self.receiver_loading_icon = RotatingImage("files/loading.png", 64, 64, -1, 2)
+        self.receiver_loading_icon.setFixedSize(96, 96)
+        self.receiver_loading_icon.setStyleSheet(
+            """
+                QGraphicsView
+                {
+                    border: 0px;
+                }
+            """
+        )
+
+        self.receiver_progressbar = Progressbar_Widget()
+        self.receiver_progressbar.set_green_theme()
+        self.receiver_progressbar.setFixedWidth(500)
+
+        receiver_layout = QVBoxLayout()
+        receiver_layout.addWidget(self.receiver_header)
+        receiver_layout.setAlignment(self.receiver_header, Qt.AlignTop | Qt.AlignHCenter)
+        receiver_layout.addSpacing(10)
+        receiver_layout.addWidget(self.receiver_loading_icon)
+        receiver_layout.setAlignment(self.receiver_loading_icon, Qt.AlignCenter)
+        receiver_layout.addWidget(self.receiver_progressbar)
+        receiver_layout.setAlignment(self.receiver_progressbar, Qt.AlignCenter)
+        receiver_layout.addSpacing(10)
+        receiver_layout.addWidget(cancel_button)
+        receiver_layout.setAlignment(cancel_button, Qt.AlignBottom | Qt.AlignHCenter)
+        receiver_layout.addSpacing(10)
+
+        receiver_widget = QWidget()
+        receiver_widget.setLayout(receiver_layout)
+
+        return receiver_widget
 
     def sender_ui(self):
         header = QLabel("Select file")
@@ -857,7 +1265,7 @@ class MainWindow(QWidget):
 
         back_button = QPushButton("BACK")
         back_button.setFixedSize(130, 40)
-        back_button.clicked.connect(self.intro_page)
+        back_button.clicked.connect(self.main_page)
         back_button.setStyleSheet(
                                     """
                                     QPushButton {
@@ -1114,100 +1522,68 @@ class MainWindow(QWidget):
             icon = icon_provider.icon(file_info)
         self.file_icon_label.setPixmap(icon.pixmap(48, 48))
 
+    def sender_connecting_state(self):
+        self.senter_loading_icon.start_animation()
+        self.senter_loading_icon.show()
+        self.sender_progressbar.hide()
+        self.sending_header.setText("Trying to Connecting")
+
+    def sender_sending_state(self):
+        self.senter_loading_icon.stop_animation()
+        self.senter_loading_icon.hide()
+        self.sender_progressbar.show()
+        self.sending_header.setText("Sending File")
+
+    def sender_finished_state(self):
+        self.senter_loading_icon.stop_animation()
+        self.senter_loading_icon.hide()
+        self.sender_progressbar.hide()
+        self.sending_header.setText("Successful")
+
+    def close_sender_thread(self):
+        self.sender_thread.stop()
+        self.sender_page()
+
+    def receiver_connecting_state(self):
+        self.receiver_loading_icon.start_animation()
+        self.receiver_loading_icon.show()
+        self.receiver_progressbar.hide()
+        self.receiver_header.setText("Trying to Connecting")
+
+    def receiver_receiving_state(self):
+        self.receiver_loading_icon.stop_animation()
+        self.receiver_loading_icon.hide()
+        self.receiver_progressbar.show()
+        self.receiver_header.setText("Receiving File")
+
+    def receiver_finished_state(self):
+        self.receiver_loading_icon.stop_animation()
+        self.receiver_loading_icon.hide()
+        self.receiver_progressbar.hide()
+        self.receiver_header.setText("Successful")
+
     # Sender
     def send(self):
         if os.path.isfile(self.sending_file_path):
             self.sending_page()
 
-            # self.sender_thread = SenderThread()
-            # self.sender_thread.connectionEstablished.connect()
+            self.sender_thread = SenderThread(self.host, self.port, self.sending_file_path)
+            self.sender_thread.connectionEstablished.connect(self.sender_sending_state)
             # self.sender_thread.progressChanged.connect()
-            # self.sender_thread.fileRecieved.connect()
-            # self.sender_thread.fileSend.connect()
-            # self.sender_thread.start()
+            self.sender_thread.fileRecieved.connect(self.sender_finished_state)
+            self.sender_thread.start()
 
     # Reciever
-    def recieve(self, host: str, port: int, file_dir: str):
-        os.makedirs(file_dir, exist_ok=True)
+    def receive(self):
+        if os.path.isdir(self.save_path):
+            self.receiver_page()
 
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.bind((host, port))
-        server.listen()
-
-        print("Server listening on {}:{}".format(host, port))
-        client, client_addr = server.accept()
-
-        print("Client connected: ", client_addr)
-
-        file_name = client.recv(1024).decode()
-        file_size = client.recv(1024).decode()
-        file_dir = file_dir + file_name
-
-        done = False
-
-        progress = tqdm.tqdm(unit="B", unit_scale=True, unit_divisor=1000, total=int(file_size))
-        progress_percentage = 0
-
-        while not done:
-            data = client.recv(1024)
-            if progress_percentage >= 100:
-                print("Successfully recieved")
-
-                done = True
-            else:
-                with open(file_dir, 'ab') as file:
-                    file.write(data)
-            progress.update(1024)
-            progress_percentage = (progress.n / progress.total) * 100
-
-        client.close()
-        server.close()
-
-class SenderThread(QThread):
-    connectionEstablished = Signal()
-    progressChanged = Signal(int)
-    fileRecieved = Signal()
-    fileSend = Signal()
-
-    def __init__(self, id_addr: str, port: int, file_path: str):
-        self.host = id_addr
-        self.port = port
-        self.file_path = file_path
-
-    def run(self):
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        file = open(self.file_path, "rb")
-
-        while True:
-            try:
-                client.connect((self.host, self.port))
-                self.connectionEstablished.emit()
-                break
-            except ConnectionRefusedError:
-                print("Connection refused. Retrying in 2 seconds...")
-                time.sleep(2)
-
-        file_name = os.path.basename(self.file_path)
-        file_size = os.path.getsize(self.file_path)
-
-
-        (tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, _, _, _) = time.localtime()
-        name_mark = "PF ["+ str(tm_mday) +"-"+ str(tm_mon) +"-"+ str(tm_year) +"]" + "["+ str(tm_hour) +"-"+ str(tm_min) +"-"+ str(tm_sec) +"] "
-
-        reciever_file = name_mark + file_name
-
-        client.send(reciever_file.encode())
-        client.send(str(file_size).encode())
-
-        data = file.read()
-        client.sendall(data)
-        self.fileSend.emit()
-
-        client.close()
-        file.close()
-
-        # self.progressChanged.emit(i)
-        self.fileRecieved.emit() 
+            self.receiver_thread = ReceiverThread(self.host, self.port, self.save_path)
+            self.receiver_thread.connectionEstablished.connect(self.receiver_receiving_state)
+            self.receiver_thread.progressChanged.connect(self.receiver_progressbar.set_current_data)
+            self.receiver_thread.fileRecieved.connect(self.receiver_finished_state)
+            self.receiver_thread.fileSize.connect(self.receiver_progressbar.set_maximum_data)
+            self.receiver_thread.start()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
