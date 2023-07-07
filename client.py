@@ -1,52 +1,36 @@
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget, QPushButton, QTextEdit
-from PySide6.QtWebSockets import QWebSocket
-from PySide6.QtCore import QUrl
+import socket
 
-class ClientWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Client Widget")
-
-        # Create a text edit widget to display server messages
-        self.text_edit = QTextEdit()
-        self.text_edit.setReadOnly(True)
-
-        # Create a button to send a message to the server
-        self.send_button = QPushButton("Send Message")
-        self.send_button.clicked.connect(self.send_message)
-
-        # Layout the widgets
-        layout = QVBoxLayout()
-        layout.addWidget(self.text_edit)
-        layout.addWidget(self.send_button)
-        self.setLayout(layout)
-
+def send_file(file_path, server_host, server_port):
+    # Create a socket object
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+    try:
         # Connect to the server
-        self.client = QWebSocket()
-        self.client.connected.connect(self.on_connected)
-        self.client.textMessageReceived.connect(self.on_text_message_received)
-        self.client.disconnected.connect(self.on_disconnected)
-        self.client.open(QUrl("ws://localhost:8080"))
+        client_socket.connect((server_host, server_port))
+        print(f"Connected to server at {server_host}:{server_port}")
+        
+        # Open the file to send
+        with open(file_path, 'rb') as file:
+            # Read the file in chunks
+            chunk = file.read(1024)
+            
+            # Send the file data in chunks
+            while chunk:
+                client_socket.send(chunk)
+                chunk = file.read(1024)
+        
+        print("File sent successfully.")
+    
+    except ConnectionRefusedError:
+        print("Could not connect to the server.")
+    
+    finally:
+        # Close the socket
+        client_socket.close()
 
-    def send_message(self):
-        # Get the message from the text edit
-        message = self.text_edit.toPlainText()
+# Usage example
+file_path = 'path/to/your/file.txt'
+server_host = '127.0.0.1'  # Replace with the server's IP address
+server_port = 12345  # Replace with the server's port
 
-        # Send the message to the server
-        self.client.sendTextMessage(message)
-
-    def on_connected(self):
-        self.text_edit.append("Connected to server")
-
-    def on_text_message_received(self, message):
-        self.text_edit.append("Received message: " + message)
-
-    def on_disconnected(self):
-        self.text_edit.append("Disconnected from server")
-
-
-if __name__ == "__main__":
-    app = QApplication([])
-    client_widget = ClientWidget()
-    client_widget.show()
-    app.exec()
+send_file(file_path, server_host, server_port)

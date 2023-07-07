@@ -1,67 +1,43 @@
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget, QPushButton, QTextEdit
-from PySide6.QtCore import Signal
-from PySide6.QtWebSockets import QWebSocketServer
-from PySide6.QtNetwork import QHostAddress
+import socket
 
-class ServerWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Server Widget")
+def receive_file(save_path, server_host, server_port):
+    # Create a socket object
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+    try:
+        # Bind the socket to a specific address and port
+        server_socket.bind((server_host, server_port))
+        print(f"Server started on {server_host}:{server_port}")
+        
+        # Listen for incoming connections
+        server_socket.listen(1)
+        
+        # Accept a client connection
+        client_socket, client_address = server_socket.accept()
+        print(f"Connected to client at {client_address[0]}:{client_address[1]}")
+        
+        # Open a file to write the received data
+        with open(save_path, 'wb') as file:
+            # Receive the file data in chunks
+            chunk = client_socket.recv(1024)
+            
+            # Write the received data to the file
+            while chunk:
+                file.write(chunk)
+                chunk = client_socket.recv(1024)
+        
+        print("File received successfully.")
+    
+    finally:
+        # Close the client socket
+        client_socket.close()
+        
+        # Close the server socket
+        server_socket.close()
 
-        # Create a text edit widget to display server messages
-        self.text_edit = QTextEdit()
-        self.text_edit.setReadOnly(True)
+# Usage example
+save_path = 'path/to/save/file.txt'
+server_host = '127.0.0.1'  # Replace with the server's IP address
+server_port = 12345  # Replace with the server's port
 
-        # Create a button to send a message to the server
-        self.send_button = QPushButton("Send Message")
-        self.send_button.clicked.connect(self.send_message)
-
-        # Layout the widgets
-        layout = QVBoxLayout()
-        layout.addWidget(self.text_edit)
-        layout.addWidget(self.send_button)
-        self.setLayout(layout)
-
-        # Start the server
-        self.server = Server(8080)
-        self.server.messageReceived.connect(self.on_message_received)
-
-    def send_message(self):
-        # Get the message from the text edit
-        message = self.text_edit.toPlainText()
-
-        # Send the message to the server
-        self.server.send_message(message)
-
-    def on_message_received(self, message):
-        # Append the received message to the text edit
-        self.text_edit.append("Received message: " + message)
-
-
-class Server(QWebSocketServer):
-    messageReceived = Signal(str)
-
-    def __init__(self, port, parent=None):
-        super().__init__("Server", QWebSocketServer.NonSecureMode, parent)
-        self.listen(QHostAddress.Any, port)
-        self.newConnection.connect(self.on_new_connection)
-
-    def on_new_connection(self):
-        client_socket = self.nextPendingConnection()
-        client_socket.textMessageReceived.connect(self.on_text_message_received)
-        client_socket.disconnected.connect(self.on_disconnected)
-
-    def on_text_message_received(self, message):
-        # Emit the received message signal
-        self.messageReceived.emit(message)
-
-    def on_disconnected(self):
-        client_socket = self.sender()
-        if client_socket:
-            client_socket.deleteLater()
-
-if __name__ == "__main__":
-    app = QApplication([])
-    server_widget = ServerWidget()
-    server_widget.show()
-    app.exec()
+receive_file(save_path, server_host, server_port)

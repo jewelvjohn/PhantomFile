@@ -62,11 +62,24 @@ class Progressbar_Widget(QWidget):
         self.current_data = QLabel("0 B")
         self.maximum_data = QLabel("0 B")
         self.percentage = QLabel("0 %")
+        self.rate = QLabel("0")
         self.progressbar = QProgressBar()
         self.file_size = 0
 
         self.percentage.setAlignment(Qt.AlignLeft)
         self.percentage.setStyleSheet(
+            """
+                QLabel
+                {
+                    color: #CCCCCC;
+                    font-size: 16px;
+                    font-weight: 650;
+                }
+            """
+        )
+
+        self.rate.setAlignment(Qt.AlignLeft)
+        self.rate.setStyleSheet(
             """
                 QLabel
                 {
@@ -134,10 +147,16 @@ class Progressbar_Widget(QWidget):
         text_layout.setAlignment(data_layout, Qt.AlignBottom | Qt.AlignRight)
         text_layout.addSpacing(5)
 
+        rate_layout = QHBoxLayout()
+        rate_layout.addWidget(self.rate)
+        rate_layout.setAlignment(self.rate, Qt.AlignRight | Qt.AlignVCenter)
+        rate_layout.addSpacing(5)
+
         progressbar_layout = QVBoxLayout()
         progressbar_layout.setAlignment(Qt.AlignCenter)
         progressbar_layout.addLayout(text_layout)
         progressbar_layout.addWidget(self.progressbar)
+        progressbar_layout.addLayout(rate_layout)
 
         self.setLayout(progressbar_layout)
 
@@ -200,6 +219,10 @@ class Progressbar_Widget(QWidget):
             percentage = round(percentage, 2)
             self.set_progress(percentage)
 
+    def set_transfer_rate(self, rate):
+        transfer_rate = self.format_transfer_rate(rate)
+        self.rate.setText(transfer_rate)
+
     @staticmethod
     def format_file_size(size):
         units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -208,7 +231,16 @@ class Progressbar_Widget(QWidget):
             size /= 1024
             index += 1
         return f"{size:.2f} {units[index]}"
-
+    
+    @staticmethod
+    def format_transfer_rate(rate):
+        units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s']
+        index = 0
+        while rate >= 1024 and index < len(units) - 1:
+            rate /= 1024
+            index += 1
+        return f"{rate:.2f} {units[index]}"
+    
 class SenderThread(QThread):
     connectionEstablished = Signal()
     progressChanged = Signal(int)
@@ -251,6 +283,7 @@ class SenderThread(QThread):
         reciever_file = name_mark + file_name
 
         client.send(reciever_file.encode())
+        time.sleep(0.1)
         client.send(str(file_size).encode())
 
         data = file.read()
@@ -296,21 +329,22 @@ class ReceiverThread(QThread):
 
         done = False
 
-        progress = tqdm.tqdm(unit="B", unit_scale=True, unit_divisor=1000, total=int(file_size))
+        progress = tqdm.tqdm(unit="B", unit_scale=True, unit_divisor=1000, total=file_size)
         progress_percentage = 0
 
         while not done:
             data = client.recv(1024)
             if progress_percentage >= 100:
                 print("Successfully recieved")
-
                 done = True
             else:
                 with open(self.file_path, 'ab') as file:
                     file.write(data)
+
             progress.update(1024)
-            progress_percentage = (progress.n / progress.total) * 100
-            self.progressChanged.emit(progress.pos)
+            self.data_transfered = progress.n
+            progress_percentage = (self.data_transfered / progress.total) * 100
+            self.progressChanged.emit(self.data_transfered)
 
         client.close()
         server.close()
@@ -1556,11 +1590,29 @@ class MainWindow(QWidget):
         self.receiver_progressbar.show()
         self.receiver_header.setText("Receiving File")
 
+        self.receiver_transfer_rate = 0
+        self.receiver_timer = QTimer()
+        self.receiver_timer.setInterval(200)
+        self.receiver_timer.timeout.connect(self.receiver_rate_update)
+        self.receiver_timer_started = False
+
+    def receiver_progress_update(self, progress):
+        if not self.receiver_timer_started:
+            self.receiver_timer.start()
+            self.receiver_timer_started = True
+        self.receiver_transfer_rate += 1024
+        self.receiver_progressbar.set_current_data(progress)
+
+    def receiver_rate_update(self):
+        self.receiver_progressbar.set_transfer_rate(self.receiver_transfer_rate * 5)
+        self.receiver_transfer_rate = 0
+
     def receiver_finished_state(self):
         self.receiver_loading_icon.stop_animation()
         self.receiver_loading_icon.hide()
         self.receiver_progressbar.hide()
         self.receiver_header.setText("Successful")
+        self.receiver_timer.stop()
 
     # Sender
     def send(self):
@@ -1580,7 +1632,7 @@ class MainWindow(QWidget):
 
             self.receiver_thread = ReceiverThread(self.host, self.port, self.save_path)
             self.receiver_thread.connectionEstablished.connect(self.receiver_receiving_state)
-            self.receiver_thread.progressChanged.connect(self.receiver_progressbar.set_current_data)
+            self.receiver_thread.progressChanged.connect(self.receiver_progress_update)
             self.receiver_thread.fileRecieved.connect(self.receiver_finished_state)
             self.receiver_thread.fileSize.connect(self.receiver_progressbar.set_maximum_data)
             self.receiver_thread.start()
