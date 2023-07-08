@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
                                QFileDialog, QFileDialog, QFileIconProvider, 
                                QSizePolicy, QGraphicsView, QGraphicsScene, 
                                QGraphicsPixmapItem, QProgressBar)
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QColor, QMouseEvent, QTransform
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QMouseEvent, QTransform
 from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint, QTimer
 
 class RotatingImage(QGraphicsView):
@@ -244,8 +244,8 @@ class Progressbar_Widget(QWidget):
 class SenderThread(QThread):
     connectionEstablished = Signal()
     progressChanged = Signal(int)
+    transferFailed = Signal()
     fileRecieved = Signal()
-    fileSend = Signal()
 
     def __init__(self, host: str, port: int, file_path: str):
         super().__init__()
@@ -260,14 +260,12 @@ class SenderThread(QThread):
 
     def run(self):
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        file = open(self.file_path, "rb")
 
         while True:
             if self.stop_request:
                 return
             try:
                 client.connect((self.host, self.port))
-                self.connectionEstablished.emit()
                 break
             except ConnectionRefusedError:
                 print("Connection refused. Retrying in 2 seconds...")
@@ -276,31 +274,45 @@ class SenderThread(QThread):
         file_name = os.path.basename(self.file_path)
         file_size = os.path.getsize(self.file_path)
 
-
-        (tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, _, _, _) = time.localtime()
-        name_mark = "PF ["+ str(tm_mday) +"-"+ str(tm_mon) +"-"+ str(tm_year) +"]" + "["+ str(tm_hour) +"-"+ str(tm_min) +"-"+ str(tm_sec) +"] "
-
-        reciever_file = name_mark + file_name
-
-        client.send(reciever_file.encode())
+        client.send(file_name.encode())
         time.sleep(0.1)
         client.send(str(file_size).encode())
 
-        data = file.read()
-        client.sendall(data)
-        self.fileSend.emit()
+        self.connectionEstablished.emit()
+
+        with open(self.file_path, 'rb') as file:
+            chunk = file.read(1024)
+            
+            while chunk and not self.stop_request:
+                client.send(chunk)
+                progress = int(client.recv(1024).decode())
+
+                if progress == -99:
+                    self.transferFailed.emit()
+                    client.close()
+                    return
+
+                self.progressChanged.emit(progress)
+                chunk = file.read(1024)
+
+        if not self.stop_request:
+            self.fileRecieved.emit()
+            print("File Transfer Successfully.")
+        else:
+            client.send("<#END PROCESS#>".encode())
+            print("File Transfer Failed")
 
         client.close()
-        file.close()
-
-        # self.progressChanged.emit(i)
-        self.fileRecieved.emit() 
 
 class ReceiverThread(QThread):
-    connectionEstablished = Signal()
+    connectionEstablished = Signal(str)
     progressChanged = Signal(int)
+    transferFailed = Signal()
     fileRecieved = Signal()
     fileSize = Signal(int)
+
+    stop_request = False
+    connected = False
 
     def __init__(self, host: str, port: int, file_path: str):
         super().__init__()
@@ -308,8 +320,13 @@ class ReceiverThread(QThread):
         self.port = port
         self.file_path = file_path
 
+    def stop(self):
+        self.stop_request = True
+
     def run(self):
         os.makedirs(self.file_path, exist_ok=True)
+
+        stop_message = "<#END PROCESS#>".encode()
 
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind((self.host, self.port))
@@ -318,38 +335,53 @@ class ReceiverThread(QThread):
         print("Server listening on {}:{}".format(self.host, self.port))
         client, client_addr = server.accept()
 
+        self.connected = True
         print("Client connected: ", client_addr)
-        self.connectionEstablished.emit()
 
         file_name = client.recv(1024).decode()
         file_size = int(client.recv(1024).decode())
-        self.file_path = self.file_path + "/" + file_name
 
+        self.connectionEstablished.emit(file_name)
         self.fileSize.emit(file_size)
 
-        done = False
+        (tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, _, _, _) = time.localtime()
+        name_mark = "PF ["+ str(tm_mday) +"-"+ str(tm_mon) +"-"+ str(tm_year) +"]" + "["+ str(tm_hour) +"-"+ str(tm_min) +"-"+ str(tm_sec) +"] "
+
+        file_name = name_mark + file_name
+        self.file_path = self.file_path + "/" + file_name
 
         progress = tqdm.tqdm(unit="B", unit_scale=True, unit_divisor=1000, total=file_size)
-        progress_percentage = 0
 
-        while not done:
-            data = client.recv(1024)
-            if progress_percentage >= 100:
-                print("Successfully recieved")
-                done = True
-            else:
-                with open(self.file_path, 'ab') as file:
-                    file.write(data)
+        with open(self.file_path, 'wb') as file:
+            chunk = client.recv(1024)
+            
+            while chunk and not self.stop_request:
+                file.write(chunk)
+                client.send(str(progress.n).encode())
+                progress.update(1024)
+                self.data_transfered = progress.n
+                self.progressChanged.emit(self.data_transfered)
 
-            progress.update(1024)
-            self.data_transfered = progress.n
-            progress_percentage = (self.data_transfered / progress.total) * 100
-            self.progressChanged.emit(self.data_transfered)
+                chunk = client.recv(1024)
+                if chunk == stop_message:
+                    file.close()
+                    os.remove(self.file_path)
+                    self.transferFailed.emit()
+                    client.close()
+                    server.close()
+                    return
+        
+        if not self.stop_request:
+            self.fileRecieved.emit()
+            print("File received successfully.")
+
+        else:
+            os.remove(self.file_path)
+            client.send("-99".encode())
+            print("Failed to receive file")
 
         client.close()
         server.close()
-
-        self.fileRecieved.emit()
 
 class MainWindow(QWidget):
     save_path = str()
@@ -358,7 +390,7 @@ class MainWindow(QWidget):
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self.setFixedSize(650, 400)
+        self.setFixedSize(650, 450)
         self.setWindowFlags(Qt.FramelessWindowHint)
 
         self.draggable_area = self.rect()
@@ -1111,6 +1143,34 @@ class MainWindow(QWidget):
                                     """
                                 )
 
+        self.sending_file_name = QLabel("")
+        self.sending_file_name.setFixedHeight(24)
+        self.sending_file_name.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
+        self.sending_file_name.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #CCCCCC; 
+                                        font-size: 18px; 
+                                        font-weight: 550;
+                                    }
+                                    """
+                                )
+
+        self.sending_file_dir = QLabel("")
+        self.sending_file_dir.setFixedHeight(18)
+        self.sending_file_dir.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.sending_file_dir.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #A0A0A0; 
+                                        font-size: 12px; 
+                                        font-weight: 500;
+                                    }
+                                    """
+                                )
+
         cancel_button = QPushButton("CANCEL")
         cancel_button.setFixedSize(130, 40)
         cancel_button.clicked.connect(self.close_sender_thread)
@@ -1156,12 +1216,21 @@ class MainWindow(QWidget):
         self.sender_progressbar.set_red_theme()
         self.sender_progressbar.setFixedWidth(500)
 
+        description_layout = QVBoxLayout()
+        description_layout.setContentsMargins(10, 0, 0, 0)
+        description_layout.addWidget(self.sending_file_dir)
+        description_layout.setAlignment(self.sending_file_dir, Qt.AlignLeft | Qt.AlignBottom)
+        description_layout.addWidget(self.sending_file_name)
+        description_layout.setAlignment(self.sending_file_name, Qt.AlignLeft | Qt.AlignTop)
+
         sending_layout = QVBoxLayout()
         sending_layout.addWidget(self.sending_header)
         sending_layout.setAlignment(self.sending_header, Qt.AlignTop | Qt.AlignHCenter)
         sending_layout.addSpacing(10)
         sending_layout.addWidget(self.senter_loading_icon)
         sending_layout.setAlignment(self.senter_loading_icon, Qt.AlignCenter)
+        sending_layout.addLayout(description_layout)
+        sending_layout.setAlignment(description_layout, Qt.AlignCenter)
         sending_layout.addWidget(self.sender_progressbar)
         sending_layout.setAlignment(self.sender_progressbar, Qt.AlignCenter)
         sending_layout.addSpacing(10)
@@ -1191,7 +1260,7 @@ class MainWindow(QWidget):
 
         cancel_button = QPushButton("CANCEL")
         cancel_button.setFixedSize(130, 40)
-        cancel_button.clicked.connect(self.main_page)
+        cancel_button.clicked.connect(self.close_receiver_thread)
         cancel_button.setStyleSheet(
                                     """
                                     QPushButton {
@@ -1230,6 +1299,22 @@ class MainWindow(QWidget):
             """
         )
 
+        self.receiver_file_name = QLabel("")
+        self.receiver_file_name.setFixedHeight(40)
+        self.receiver_file_name.setAlignment(Qt.AlignCenter)
+        self.receiver_file_name.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #CCCCCC; 
+                                        font-size: 16px; 
+                                        font-weight: 550;
+                                        padding: 8px 8px;
+                                    }
+                                    """
+                                )
+
+
         self.receiver_progressbar = Progressbar_Widget()
         self.receiver_progressbar.set_green_theme()
         self.receiver_progressbar.setFixedWidth(500)
@@ -1240,6 +1325,8 @@ class MainWindow(QWidget):
         receiver_layout.addSpacing(10)
         receiver_layout.addWidget(self.receiver_loading_icon)
         receiver_layout.setAlignment(self.receiver_loading_icon, Qt.AlignCenter)
+        receiver_layout.addWidget(self.receiver_file_name)
+        receiver_layout.setAlignment(self.receiver_file_name, Qt.AlignCenter)
         receiver_layout.addWidget(self.receiver_progressbar)
         receiver_layout.setAlignment(self.receiver_progressbar, Qt.AlignCenter)
         receiver_layout.addSpacing(10)
@@ -1560,35 +1647,71 @@ class MainWindow(QWidget):
         self.senter_loading_icon.start_animation()
         self.senter_loading_icon.show()
         self.sender_progressbar.hide()
+        self.sending_file_name.hide()
+        self.sending_file_dir.hide()
         self.sending_header.setText("Trying to Connecting")
+
+        self.sending_file_dir.setText(os.path.dirname(self.sending_file_path))
+        self.sending_file_name.setText(os.path.basename(self.sending_file_path))
 
     def sender_sending_state(self):
         self.senter_loading_icon.stop_animation()
         self.senter_loading_icon.hide()
         self.sender_progressbar.show()
+        self.sending_file_name.show()
+        self.sending_file_dir.show()
+
+        file_size = os.path.getsize(self.sending_file_path)
+        self.sender_progressbar.set_maximum_data(file_size)
         self.sending_header.setText("Sending File")
+
+        self.sender_transfer_rate = 0
+        self.sender_timer = QTimer()
+        self.sender_timer.setInterval(200)
+        self.sender_timer.timeout.connect(self.sender_rate_update)
+        self.sender_timer_started = False
+
+    def sender_progress_update(self, progress):
+        if not self.sender_timer_started:
+            self.sender_timer.start()
+            self.sender_timer_started = True
+        self.sender_transfer_rate += 1024
+        self.sender_progressbar.set_current_data(progress)
+
+    def sender_rate_update(self):
+        self.sender_progressbar.set_transfer_rate(self.sender_transfer_rate * 5)
+        self.sender_transfer_rate = 0
 
     def sender_finished_state(self):
         self.senter_loading_icon.stop_animation()
         self.senter_loading_icon.hide()
         self.sender_progressbar.hide()
+        self.sending_file_name.hide()
+        self.sending_file_dir.hide()
         self.sending_header.setText("Successful")
 
     def close_sender_thread(self):
         self.sender_thread.stop()
         self.sender_page()
 
+    def sender_transfer_failed(self):
+        self.sender_page()
+
     def receiver_connecting_state(self):
         self.receiver_loading_icon.start_animation()
         self.receiver_loading_icon.show()
         self.receiver_progressbar.hide()
+        self.receiver_file_name.hide()
         self.receiver_header.setText("Trying to Connecting")
 
-    def receiver_receiving_state(self):
+    def receiver_receiving_state(self, file_name):
         self.receiver_loading_icon.stop_animation()
         self.receiver_loading_icon.hide()
         self.receiver_progressbar.show()
+        self.receiver_file_name.show()
         self.receiver_header.setText("Receiving File")
+
+        self.receiver_file_name.setText(file_name)
 
         self.receiver_transfer_rate = 0
         self.receiver_timer = QTimer()
@@ -1611,8 +1734,18 @@ class MainWindow(QWidget):
         self.receiver_loading_icon.stop_animation()
         self.receiver_loading_icon.hide()
         self.receiver_progressbar.hide()
+        self.receiver_file_name.hide()
         self.receiver_header.setText("Successful")
         self.receiver_timer.stop()
+
+    def close_receiver_thread(self):
+        if not self.receiver_thread.connected:
+            self.receiver_thread.quit()
+        self.receiver_thread.stop()
+        self.main_page()
+
+    def receiver_transfer_failed(self):
+        self.main_page()
 
     # Sender
     def send(self):
@@ -1621,7 +1754,8 @@ class MainWindow(QWidget):
 
             self.sender_thread = SenderThread(self.host, self.port, self.sending_file_path)
             self.sender_thread.connectionEstablished.connect(self.sender_sending_state)
-            # self.sender_thread.progressChanged.connect()
+            self.sender_thread.progressChanged.connect(self.sender_progress_update)
+            self.sender_thread.transferFailed.connect(self.sender_transfer_failed)
             self.sender_thread.fileRecieved.connect(self.sender_finished_state)
             self.sender_thread.start()
 
@@ -1633,6 +1767,7 @@ class MainWindow(QWidget):
             self.receiver_thread = ReceiverThread(self.host, self.port, self.save_path)
             self.receiver_thread.connectionEstablished.connect(self.receiver_receiving_state)
             self.receiver_thread.progressChanged.connect(self.receiver_progress_update)
+            self.receiver_thread.transferFailed.connect(self.receiver_transfer_failed)
             self.receiver_thread.fileRecieved.connect(self.receiver_finished_state)
             self.receiver_thread.fileSize.connect(self.receiver_progressbar.set_maximum_data)
             self.receiver_thread.start()
