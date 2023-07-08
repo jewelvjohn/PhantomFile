@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
                                QFileDialog, QFileDialog, QFileIconProvider, 
                                QSizePolicy, QGraphicsView, QGraphicsScene, 
                                QGraphicsPixmapItem, QProgressBar)
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QMouseEvent, QTransform
-from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint, QTimer
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QMouseEvent, QTransform, QMovie
+from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint, QTimer, QSize
 
 class RotatingImage(QGraphicsView):
     steps = 1
@@ -391,6 +391,7 @@ class MainWindow(QWidget):
         super().__init__()
         self.app = app
         self.setFixedSize(650, 450)
+        self.setWindowIcon("files/window.png")
         self.setWindowFlags(Qt.FramelessWindowHint)
 
         self.draggable_area = self.rect()
@@ -1171,6 +1172,21 @@ class MainWindow(QWidget):
                                     """
                                 )
 
+        self.sender_finished_animation = QLabel()
+        self.sender_finished_animation.setAlignment(Qt.AlignCenter)
+        self.sender_finished_animation.setFixedSize(128,128)
+        
+        self.sender_finished_animation.hide()
+
+        movie = QMovie("files/tick.gif")
+        self.sender_finished_animation.setMovie(movie)
+        movie.start()
+
+        frame_size = movie.frameRect().size()
+        desired_size = QSize(128, 128)
+        scaled_size = frame_size.scaled(desired_size, Qt.AspectRatioMode.KeepAspectRatio)
+        movie.setScaledSize(scaled_size)
+
         cancel_button = QPushButton("CANCEL")
         cancel_button.setFixedSize(130, 40)
         cancel_button.clicked.connect(self.close_sender_thread)
@@ -1217,7 +1233,7 @@ class MainWindow(QWidget):
         self.sender_progressbar.setFixedWidth(500)
 
         description_layout = QVBoxLayout()
-        description_layout.setContentsMargins(10, 0, 0, 0)
+        description_layout.setContentsMargins(50, 0, 50, 0)
         description_layout.addWidget(self.sending_file_dir)
         description_layout.setAlignment(self.sending_file_dir, Qt.AlignLeft | Qt.AlignBottom)
         description_layout.addWidget(self.sending_file_name)
@@ -1227,6 +1243,8 @@ class MainWindow(QWidget):
         sending_layout.addWidget(self.sending_header)
         sending_layout.setAlignment(self.sending_header, Qt.AlignTop | Qt.AlignHCenter)
         sending_layout.addSpacing(10)
+        sending_layout.addWidget(self.sender_finished_animation)
+        sending_layout.setAlignment(self.sender_finished_animation, Qt.AlignCenter)
         sending_layout.addWidget(self.senter_loading_icon)
         sending_layout.setAlignment(self.senter_loading_icon, Qt.AlignCenter)
         sending_layout.addLayout(description_layout)
@@ -1314,6 +1332,20 @@ class MainWindow(QWidget):
                                     """
                                 )
 
+        self.receiver_finished_animation = QLabel()
+        self.receiver_finished_animation.setAlignment(Qt.AlignCenter)
+        self.receiver_finished_animation.setFixedSize(128,128)
+        
+        self.receiver_finished_animation.hide()
+
+        movie = QMovie("files/tick.gif")
+        self.receiver_finished_animation.setMovie(movie)
+        movie.start()
+
+        frame_size = movie.frameRect().size()
+        desired_size = QSize(128, 128)
+        scaled_size = frame_size.scaled(desired_size, Qt.AspectRatioMode.KeepAspectRatio)
+        movie.setScaledSize(scaled_size)
 
         self.receiver_progressbar = Progressbar_Widget()
         self.receiver_progressbar.set_green_theme()
@@ -1323,6 +1355,8 @@ class MainWindow(QWidget):
         receiver_layout.addWidget(self.receiver_header)
         receiver_layout.setAlignment(self.receiver_header, Qt.AlignTop | Qt.AlignHCenter)
         receiver_layout.addSpacing(10)
+        receiver_layout.addWidget(self.receiver_finished_animation)
+        receiver_layout.setAlignment(self.receiver_finished_animation, Qt.AlignCenter)
         receiver_layout.addWidget(self.receiver_loading_icon)
         receiver_layout.setAlignment(self.receiver_loading_icon, Qt.AlignCenter)
         receiver_layout.addWidget(self.receiver_file_name)
@@ -1645,6 +1679,7 @@ class MainWindow(QWidget):
 
     def sender_connecting_state(self):
         self.senter_loading_icon.start_animation()
+        self.sender_finished_animation.hide()
         self.senter_loading_icon.show()
         self.sender_progressbar.hide()
         self.sending_file_name.hide()
@@ -1656,6 +1691,7 @@ class MainWindow(QWidget):
 
     def sender_sending_state(self):
         self.senter_loading_icon.stop_animation()
+        self.sender_finished_animation.hide()
         self.senter_loading_icon.hide()
         self.sender_progressbar.show()
         self.sending_file_name.show()
@@ -1688,6 +1724,7 @@ class MainWindow(QWidget):
         self.sender_progressbar.hide()
         self.sending_file_name.hide()
         self.sending_file_dir.hide()
+        self.sender_finished_animation.show()
         self.sending_header.setText("Successful")
 
     def close_sender_thread(self):
@@ -1702,6 +1739,7 @@ class MainWindow(QWidget):
         self.receiver_loading_icon.show()
         self.receiver_progressbar.hide()
         self.receiver_file_name.hide()
+        self.receiver_finished_animation.hide()
         self.receiver_header.setText("Trying to Connecting")
 
     def receiver_receiving_state(self, file_name):
@@ -1709,6 +1747,7 @@ class MainWindow(QWidget):
         self.receiver_loading_icon.hide()
         self.receiver_progressbar.show()
         self.receiver_file_name.show()
+        self.receiver_finished_animation.hide()
         self.receiver_header.setText("Receiving File")
 
         self.receiver_file_name.setText(file_name)
@@ -1735,6 +1774,7 @@ class MainWindow(QWidget):
         self.receiver_loading_icon.hide()
         self.receiver_progressbar.hide()
         self.receiver_file_name.hide()
+        self.receiver_finished_animation.show()
         self.receiver_header.setText("Successful")
         self.receiver_timer.stop()
 
