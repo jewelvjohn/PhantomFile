@@ -9,9 +9,10 @@ from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
                                QVBoxLayout, QHBoxLayout, QTextEdit, QStackedLayout,
                                QFileDialog, QFileDialog, QFileIconProvider, 
                                QSizePolicy, QGraphicsView, QGraphicsScene, 
-                               QGraphicsPixmapItem, QProgressBar)
-from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QMouseEvent, QTransform, QMovie
-from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint, QTimer, QSize
+                               QGraphicsPixmapItem, QProgressBar, QSpacerItem, 
+                               QDialog)
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QImage, QMouseEvent, QTransform, QMovie, QIcon, QDesktopServices
+from PySide6.QtCore import Qt, QFileInfo, QThread, Signal, QPoint, QTimer, QSize, QUrl
 
 class RotatingImage(QGraphicsView):
     steps = 1
@@ -241,6 +242,311 @@ class Progressbar_Widget(QWidget):
             index += 1
         return f"{rate:.2f} {units[index]}"
     
+class AboutMeDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(500, 425)
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setModal(True)
+
+        icon = QIcon("files/info.png")
+        self.setWindowIcon(icon)
+
+        self.setStyleSheet(
+                                """
+                                QDialog
+                                {
+                                    background-color: #151515;
+                                }
+                                """
+                            )
+
+        app_icon = QPixmap("files/info.png")
+        app_icon = app_icon.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+
+        icon_label = QLabel()
+        icon_label.setPixmap(app_icon)
+        icon_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        title_label = QLabel("About Me")
+        title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        title_label.setFixedHeight(40)
+        title_label.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        color: #CCCCCC; 
+                                        font-size: 16px; 
+                                        font-weight: 550;
+                                    }
+                                    """
+                                )
+
+        close_icon = QPixmap("files/close.png")
+
+        close_button = QPushButton()
+        close_button.setIcon(close_icon)
+        close_button.setFixedSize(20, 20)
+        close_button.clicked.connect(self.quit)
+        close_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #AA4040;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        title_layout = QHBoxLayout()
+        title_layout.addWidget(icon_label)
+        title_layout.setAlignment(icon_label, Qt.AlignRight | Qt.AlignVCenter)
+        title_layout.addSpacing(5)
+        title_layout.addWidget(title_label)
+        title_layout.setAlignment(title_label, Qt.AlignLeft | Qt.AlignVCenter)
+
+        titlebar_button_layout = QHBoxLayout()
+        titlebar_button_layout.addWidget(close_button)
+        titlebar_button_layout.setAlignment(close_button, Qt.AlignRight | Qt.AlignVCenter)
+
+        titlebar_layout = QHBoxLayout()
+        titlebar_layout.addSpacing(5)
+        titlebar_layout.addLayout(title_layout)
+        titlebar_layout.setAlignment(title_layout, Qt.AlignLeft | Qt.AlignVCenter)
+        titlebar_layout.addLayout(titlebar_button_layout)
+        titlebar_layout.setAlignment(titlebar_button_layout, Qt.AlignRight | Qt.AlignVCenter)
+        titlebar_layout.addSpacing(5)
+
+        aboutme_section = QWidget()
+        aboutme_section.setStyleSheet(
+            """
+                QWidget
+                {
+                    background-color: #282828;
+                    border-radius: 8px;
+                }
+            """
+        )
+
+        description = """
+    I'm a passionate developer with a love for creating 
+    innovative applications. This desktop application is 
+    developed purely for the joy of coding. It uses TCP 
+    socket technology to enable seamless file transfer 
+    between computers. I focused on performance and 
+    simplicity to ensure fast and stable transfers. I hope 
+    this application brings value and enjoyment to users, 
+    and I welcome any feedback or collaboration 
+    opportunities. Let's embark on this coding journey 
+    together!
+
+        """
+
+        description_label = QLabel(description)
+        description_label.setAlignment(Qt.AlignJustify)
+        description_label.setStyleSheet(
+                                    """
+                                    QLabel
+                                    {
+                                        background-image:url("files/background.png");
+                                        background-repeat: no-repeat;
+                                        border-radius: 8px;
+                                        padding: 8px 8px;
+                                        color: #FFFFFF; 
+                                        font-size: 16px; 
+                                        font-weight: 400;
+                                    }
+                                    """
+                                )
+
+        github_icon = QPixmap("files/github.png")
+        github_icon = github_icon.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+
+        github_button = QPushButton()
+        github_button.setIcon(github_icon)
+        github_button.setFixedSize(40, 40)
+        github_button.clicked.connect(self.open_github)
+        github_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        border-radius: 5px;
+                                        qproperty-iconSize: 32px;
+
+                                        background-color: #151515;
+                                        border: 0px;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #40AA40;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        linkedin_icon = QPixmap("files/linkedin.png")
+        linkedin_icon = linkedin_icon.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+
+        linkedin_button = QPushButton()
+        linkedin_button.setIcon(linkedin_icon)
+        linkedin_button.setFixedSize(40, 40)
+        linkedin_button.clicked.connect(self.open_linkedin)
+        linkedin_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        border-radius: 5px;
+                                        qproperty-iconSize: 32px;
+
+                                        background-color: #151515;
+                                        border: 0px;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #4040AA;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        instagram_icon = QPixmap("files/instagram.png")
+        instagram_icon = instagram_icon.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+
+        instagram_button = QPushButton()
+        instagram_button.setIcon(instagram_icon)
+        instagram_button.setFixedSize(40, 40)
+        instagram_button.clicked.connect(self.open_instagram)
+        instagram_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        border-radius: 5px;
+                                        qproperty-iconSize: 32px;
+
+                                        background-color: #151515;
+                                        border: 0px;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #AA4040;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        website_icon = QPixmap("files/logo.png")
+        website_icon = website_icon.scaled(30, 30, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+
+        website_button = QPushButton()
+        website_button.setIcon(website_icon)
+        website_button.setFixedSize(40, 40)
+        website_button.clicked.connect(self.open_website)
+        website_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        border-radius: 5px;
+                                        qproperty-iconSize: 32px;
+
+                                        background-color: #151515;
+                                        border: 0px;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #754075;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        left_spacer = QSpacerItem(40, 40, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        right_spacer = QSpacerItem(40, 40, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        link_button_layout = QHBoxLayout()
+        link_button_layout.addSpacerItem(left_spacer)
+        link_button_layout.addWidget(github_button)
+        link_button_layout.addWidget(linkedin_button)
+        link_button_layout.addWidget(instagram_button)
+        link_button_layout.addWidget(website_button) 
+        link_button_layout.addSpacerItem(right_spacer)
+
+        aboutme_layout = QVBoxLayout()
+        aboutme_layout.addWidget(description_label)
+        aboutme_layout.setAlignment(description_label, Qt.AlignCenter)
+        aboutme_layout.addSpacing(10)
+        aboutme_layout.addLayout(link_button_layout)
+        aboutme_layout.setContentsMargins(10, 20, 10, 20)
+
+        aboutme_section.setLayout(aboutme_layout)
+
+        layout = QVBoxLayout()
+        layout.addLayout(titlebar_layout)
+        layout.setAlignment(titlebar_layout, Qt.AlignTop)
+        layout.addWidget(aboutme_section)
+        layout.setAlignment(aboutme_section, Qt.AlignTop)
+
+        self.setLayout(layout)
+
+    def quit(self):
+        self.accept()
+
+    def open_github(self):
+        QDesktopServices.openUrl(QUrl("https://github.com/jewelvjohn/"))
+
+    def open_linkedin(self):
+        QDesktopServices.openUrl(QUrl("https://www.linkedin.com/in/jeweljohn/"))
+
+    def open_instagram(self):
+        QDesktopServices.openUrl(QUrl("https://www.instagram.com/jewelvjohn/"))
+
+    def open_website(self):
+        QDesktopServices.openUrl(QUrl("https://jewelvjohn.github.io/"))
+
 class SenderThread(QThread):
     connectionEstablished = Signal()
     progressChanged = Signal(int)
@@ -389,9 +695,11 @@ class MainWindow(QWidget):
 
     def __init__(self, app):
         super().__init__()
+        icon = QIcon("files/window.png")
+        
         self.app = app
         self.setFixedSize(650, 450)
-        self.setWindowIcon("files/window.png")
+        self.setWindowIcon(icon)
         self.setWindowFlags(Qt.FramelessWindowHint)
 
         self.draggable_area = self.rect()
@@ -499,9 +807,6 @@ class MainWindow(QWidget):
 
         receiver_widget = self.receiver_ui()
         self.stacked_layout.addWidget(receiver_widget)
-
-        # recieve_widget = self.send_ui()
-        # self.stacked_layout.addWidget(recieve_widget)
 
         self.main_layout = QVBoxLayout()
         self.main_layout.addWidget(titlebar)
@@ -652,9 +957,6 @@ class MainWindow(QWidget):
         return titlebar_widget
 
     def main_ui(self):
-        dummy_header = QLabel("")
-        dummy_header.setAlignment(Qt.AlignRight)
-
         client_header = QLabel("(Client)")
         client_header.setStyleSheet(
                                     """
@@ -684,11 +986,44 @@ class MainWindow(QWidget):
         server_header.setAlignment(Qt.AlignCenter)
         
         settings_icon = QPixmap("files/gear.png")
+        info_icon = QPixmap("files/info.png")
 
         settings_button = QPushButton()
         settings_button.setIcon(settings_icon)
+        settings_button.setFixedSize(30, 30)
         settings_button.clicked.connect(self.settings_page)
         settings_button.setStyleSheet(
+                                    """
+                                    QPushButton {
+                                        font-size: 15px;
+                                        font-weight: 800;
+                                        padding: 8px 8px;
+                                        border-radius: 5px;
+
+                                        background-color: #151515;
+                                        border: 1px solid #555555;
+                                        color: #CCCCCC;
+                                    }
+                                    
+                                    QPushButton:hover {
+                                        background-color: #80AA80;
+                                        border: 0px solid #555555;
+                                        color: #101010;
+                                    }
+                                    
+                                    QPushButton:pressed {
+                                        background-color: #444444;
+                                        border: 2px solid #777777;
+                                        color: #CCCCCC;
+                                    }
+                                    """
+                                )
+
+        aboutme_button = QPushButton()
+        aboutme_button.setIcon(info_icon)
+        aboutme_button.setFixedSize(30, 30)
+        aboutme_button.clicked.connect(self.open_aboutme)
+        aboutme_button.setStyleSheet(
                                     """
                                     QPushButton {
                                         font-size: 15px;
@@ -790,6 +1125,8 @@ class MainWindow(QWidget):
         note.setAlignment(Qt.AlignCenter)
         note.setWordWrap(True)
 
+        horizontal_spacer = QSpacerItem(30, 30, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
         send_button_layout = QVBoxLayout()
         send_button_layout.setAlignment(Qt.AlignCenter)
         send_button_layout.addWidget(sender_button)
@@ -807,10 +1144,10 @@ class MainWindow(QWidget):
         button_layout.addLayout(receive_button_layout)
 
         header_layout = QHBoxLayout()
+        header_layout.addSpacing(10)
         header_layout.addWidget(settings_button)
-        header_layout.addWidget(dummy_header)
-        header_layout.setAlignment(settings_button, Qt.AlignLeft)
-        header_layout.setAlignment(dummy_header, Qt.AlignRight)
+        header_layout.addWidget(aboutme_button)
+        header_layout.addSpacerItem(horizontal_spacer)
 
         main_layout = QVBoxLayout()
         main_layout.addLayout(header_layout)
@@ -1570,6 +1907,11 @@ class MainWindow(QWidget):
         send_widget.setLayout(send_layout)
 
         return send_widget
+    
+    def open_aboutme(self):
+        aboutme_dialog = AboutMeDialog()
+        aboutme_dialog.show()
+        aboutme_dialog.exec()
 
     def saves_folder_dialog(self):
         folder_dialog = QFileDialog()
